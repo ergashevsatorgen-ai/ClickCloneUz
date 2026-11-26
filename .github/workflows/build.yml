@@ -1,0 +1,91 @@
+name: Click Clone APK Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ClickClone.zip'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download project files
+        uses: actions/checkout@v4
+
+      - name: Check ZIP file
+        run: |
+          if [ ! -f ClickClone.zip ]; then
+            echo "ClickClone.zip fayli topilmadi!"
+            exit 1
+          fi
+
+      - name: Extract ZIP
+        run: |
+          mkdir -p project
+          unzip -q ClickClone.zip -d project
+          echo "ZIP muvaffaqiyatli ochildi"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.9'
+
+      - name: Find Android project
+        id: project
+        run: |
+          ROOT=$(find project -type f \
+            \( -name settings.gradle \
+            -o -name settings.gradle.kts \) \
+            -print -quit)
+
+          if [ -z "$ROOT" ]; then
+            echo "Android loyiha topilmadi!"
+            exit 1
+          fi
+
+          DIR=$(dirname "$ROOT")
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK
+        id: build
+        run: |
+          cd "${{ steps.project.outputs.dir }}"
+
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+          APK=$(find app/build/outputs/apk/debug \
+            -name "*.apk" -type f -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "APK yaratilmadi!"
+            exit 1
+          fi
+
+          echo "apk_path=${{ steps.project.outputs.dir }}/$APK" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClickClone-APK
+          path: ${{ steps.build.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 14
